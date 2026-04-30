@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, onUnmounted, reactive, ref } from 'vue';
 
 const timeLeft = ref(25 * 60);
 const isRunning = ref(false);
@@ -10,6 +10,8 @@ const timer = reactive({
   workDuration: 25,
   breakDuration: 5
 });
+
+let intervalId = null;
 
 const displayTime = computed(() => {
   const minutes = Math.floor(timeLeft.value / 60);
@@ -32,6 +34,42 @@ const progress = computed(() => {
 
   return ((totalSeconds - timeLeft.value) / totalSeconds) * 100;
 });
+
+function startTimer() {
+  if (isRunning.value || timeLeft.value <= 0) return;
+
+  isRunning.value = true;
+
+  intervalId =setInterval(() => {
+    timeLeft.value--;
+
+    if (timeLeft.value <= 0) {
+      stopTimer();
+    }
+  }, 1000);
+}
+
+function stopTimer() {
+  isRunning.value = false;
+  clearInterval(intervalId);
+  intervalId = null;
+}
+
+function resetTimer() {
+  stopTimer()
+
+  if (timer.mode === 'work') {
+    timeLeft.value = timer.workDuration * 60;
+  } else {
+    timeLeft.value = timer.breakDuration * 60;
+  }
+}
+
+onUnmounted(() => {
+  if (intervalId) {
+    clearInterval(intervalId);
+  }
+});
 </script>
 
 <template>
@@ -52,6 +90,31 @@ const progress = computed(() => {
       </div>
     </div>
 
+    <div class="controls">
+      <button
+        v-if="!isRunning"
+        @click="startTimer"
+        class="btn btn-start"
+      >
+        Start
+      </button>
+
+      <button
+        v-else
+        @click="pauseTimer"
+        class="btn btn-pause"
+      >
+        Pause
+      </button>
+
+      <button
+        @click="resetTimer"
+        class="btn btn-reset"
+      >
+        Reset
+      </button>
+    </div>
+
     <p>Sesi selesai: {{ sessions }}</p>
   </div>
 </template>
@@ -66,7 +129,7 @@ const progress = computed(() => {
 }
 
 h1 {
-  color: #e74c3c;
+  color: #333;
   margin-bottom: 0.5rem;
 }
 
@@ -105,5 +168,51 @@ h2 {
   background: linear-gradient(90deg, #e74c3c, #c0392b);
   border-radius: 4px;
   transition: width 1s linear;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.btn {
+  padding: 0.75rem 2rem;
+  font-size: 1rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-start {
+  background: #27ae60;
+  color: white;
+}
+
+.btn-pause {
+  background: #f39c12;
+  color: white;
+}
+
+.btn-reset {
+  background: #95a5a6;
+  color: white;
+}
+
+.sessions {
+  color: #7f8c8d;
+  font-size: 0.9rem;
 }
 </style>
