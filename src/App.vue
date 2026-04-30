@@ -8,9 +8,12 @@ const sessions = ref(0);
 const timer = reactive({
   mode: 'work',
   workDuration: 25,
-  breakDuration: 5
+  breakDuration: 5,
+  longBreakDuration: 15,
+  sessionsBeforeLongBreak: 4
 });
 
+const history = ref([]);
 let intervalId = null;
 
 const displayTime = computed(() => {
@@ -24,15 +27,47 @@ const displayTime = computed(() => {
 });
 
 const modeLabel = computed(() => {
-  return timer.mode === 'work' ? 'Fokus!' : 'Istirahat!';
+  if (timer.mode === 'work') return 'Fokus!';
+  if (timer.mode === 'break') return 'Istirahat!';
+  return 'Long Break';
 });
 
 const progress = computed(() => {
-  const totalSeconds = timer.mode === 'work'
-    ? timer.workDuration * 60
-    : timer.breakDuration * 60
+  let totalSeconds;
+
+  if (timer.mode === 'work') {
+    totalSeconds = timer.workDuration * 60;
+  } else if (timer.mode === 'longBreak') {
+    totalSeconds = timer.longBreakDuration * 60;
+  } else {
+    totalSeconds = timer.breakDuration * 60;
+  }
 
   return ((totalSeconds - timeLeft.value) / totalSeconds) * 100;
+});
+
+const progressColor = computed(() => {
+  if (timer.mode === 'work') {
+    return 'linear-gradient(90deg, #e75c3c, #c0392b)';
+  } 
+
+  if (timer.mode === 'longBreak') {
+    return 'linear-gradient(90deg, #3498db, #2980b9)';
+  }
+  
+  return 'linear-gradient(90deg, #e75c3c, #c0392b)';
+});
+
+const isNextLongBreak = computed(() => {
+  return (sessions.value + 1) % timer.sessionsBeforeLongBreak === 0;
+});
+
+const switchLabel = computed(() => {
+  if (timer.mode === 'work') {
+    return isNextLongBreak.value ? 'Skip ke Long Break' : 'Skip ke Istirahat';
+  }
+
+  return 'Skip ke Fokus';
 });
 
 function startTimer() {
@@ -45,8 +80,17 @@ function startTimer() {
 
     if (timeLeft.value <= 0) {
       stopTimer();
+      addHistory();
+      autoSwitch();
     }
   }, 1000);
+}
+
+function pauseTimer() {
+  if (!isRunning.value) return;
+  isRunning.value = false;
+  clearInterval(intervalId);
+  intervalId = null;
 }
 
 function stopTimer() {
@@ -60,8 +104,63 @@ function resetTimer() {
 
   if (timer.mode === 'work') {
     timeLeft.value = timer.workDuration * 60;
+  } else if (timer.mode === 'longBreak') {
+    timeLeft.value = timer.longBreakDuration * 60;
   } else {
     timeLeft.value = timer.breakDuration * 60;
+  }
+}
+
+function switchMode() {
+  stopTimer();
+
+  if (timer.mode === 'work') {
+    if ((sessions.value + 1) % timer.sessionsBeforeLongBreak === 0) {
+      timer.mode = 'longBreak';
+      timeLeft.value = timer.longBreakDuration * 60;
+    } else {
+      timer.mode = 'break';
+      timeLeft.value = timer.breakDuration * 60;
+    }
+  } else {
+    timer.mode = 'work';
+    timeLeft.value = timer.workDuration * 60;
+  }
+}
+
+function autoSwitch() {
+  if (timer.mode === 'work') {
+    sessions.value++;
+
+    if (sessions.value % timer.sessionsBeforeLongBreak === 0) {
+      timer.mode = 'longBreak';
+      timeLeft.value = timer.longBreakDuration * 60;
+    } else {
+      timer.mode = 'break';
+      timeLeft.value = timer.breakDuration * 60;
+    }
+  } else {
+    timer.mode = 'work';
+    timeLeft.value = timer.workDuration * 60;
+  }
+}
+
+function addHistory() {
+  const now = new Date();
+  const timeString = now.toLocaleTimeString('id-ID', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  history.value.unshift({
+    id: Date.now(),
+    mode: timer.mode,
+    time: timeString,
+    session: sessions.value + 1
+  });
+
+  if (history.value.length > 10) {
+    history.value.pop();
   }
 }
 
@@ -85,9 +184,16 @@ onUnmounted(() => {
     <div class="progress-bar">
       <div
         class="progress-fill"
-        :style="{ width: progress + '%' }"
+        :style="{ width: progress + '%', background: progressColor }"
       >
       </div>
+    </div>
+
+    <div class="session-info">
+      <p>Sesi: <strong>{{ sessions }}</strong> / {{ timer.sessionsBeforeLongBreak }} </p>
+      <p v-if="isNextLongBreak" class="nex-long">
+        Sesi berikutnya: Long Break!
+      </p>
     </div>
 
     <div class="controls">
@@ -113,9 +219,28 @@ onUnmounted(() => {
       >
         Reset
       </button>
+
+      <button
+        @click="switchMode"
+        class="btn btn-switch"
+      >
+        {{ switchLabel }}
+      </button>
     </div>
 
-    <p>Sesi selesai: {{ sessions }}</p>
+    <div v-if="history.length > 0" class="history">
+      <h3>Riwayat Sesi</h3>
+      <ul>
+        <li
+          v-for="item in history"
+          :key="item.id"
+          :class="item.mode"
+        >
+          Sesi {{ item.session }} ({{ item.mode }}) - {{ item.time }}
+        </li>
+      </ul>
+    </div>
+
   </div>
 </template>
 
@@ -137,6 +262,13 @@ h2 {
   font-size: 1.2rem;
   text-transform: uppercase;
   letter-spacing: 2px;
+  transition: color 0.3s ease;
+}
+
+h3 {
+  color: #555;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .work {
@@ -145,6 +277,10 @@ h2 {
 
 .break {
   color: #27ae60;
+}
+
+.longBreak {
+  color: #3498db;
 }
 
 .timer-display {
@@ -161,6 +297,7 @@ h2 {
   background: #ecf0f1;
   border-radius: 4px;
   margin: 1rem 0;
+  overflow: hidden;
 }
 
 .progress-fill {
@@ -170,10 +307,22 @@ h2 {
   transition: width 1s linear;
 }
 
+session-info {
+  margin: 0.5rem 0;
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.next-long {
+  color: #3498db;
+  font-weight: bold;
+}
+
 .controls {
   display: flex;
   gap: 1rem;
   justify-content: center;
+  flex-wrap: wrap;
   margin: 1.5rem 0;
 }
 
@@ -211,8 +360,44 @@ h2 {
   color: white;
 }
 
-.sessions {
-  color: #7f8c8d;
-  font-size: 0.9rem;
+.btn-switch {
+  background: #3498db;
+  color: white;
+}
+
+.history {
+  margin-top: 1.5rem;
+  text-align: left;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.history ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.history li {
+  padding: 0.4rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #eee;
+}
+
+.history li:last-child {
+  border-bottom: none;
+}
+
+.history li.work {
+  color: #e74c3c;
+}
+
+.history li.break {
+  color: #27ae60;
+}
+
+.history li.longBreak {
+  color: #3498db;
 }
 </style>
